@@ -2,20 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-"""
-        class Model(nn.Module):
-            def __init__(self):
-                super(Model, self).__init__()
-                self.conv1 = nn.Conv2d(1, 20, 5)
-                self.conv2 = nn.Conv2d(20, 20, 5)
-
-            def forward(self, x):
-                x = F.relu(self.conv1(x))
-                return F.relu(self.conv2(x))
-"""
-
-
 class EEGNet(nn.Module):
     def __init__(self):
         super(EEGNet, self).__init__()
@@ -36,7 +22,7 @@ class EEGNet(nn.Module):
         self.pooling2 = nn.AvgPool2d(1, 8)
         
         # FC Layer
-        self.fc1 = nn.Linear(1*64*128,16*1*4)
+        self.fc1 = nn.Linear(1*4*16,1)
         
 
     def forward(self, x):
@@ -73,4 +59,40 @@ class EEGNet(nn.Module):
     
 from torchsummary import summary
 model = EEGNet()
-summary(model, input_size=(1, 64, 128))
+summary(model, input_size=(None, 64, 128))
+
+#%% Summary
+"""
+input torch.Size([2, 1, 64, 128])
+conv2D torch.Size([2, 8, 64, 65])
+batchnorm torch.Size([2, 8, 64, 65])
+depthwise torch.Size([2, 16, 57, 65])
+batchnorm torch.Size([2, 16, 57, 65])
+pooling1 torch.Size([2, 16, 15, 17])
+dropout torch.Size([2, 16, 15, 17])
+pointwise torch.Size([2, 16, 15, 2])
+batchnorm torch.Size([2, 16, 15, 2])
+pooling2 torch.Size([2, 16, 2, 1])
+dropout torch.Size([2, 16, 2, 1])
+----------------------------------------------------------------
+        Layer (type)               Output Shape         Param #
+================================================================
+            Conv2d-1            [-1, 8, 64, 65]             520
+       BatchNorm2d-2            [-1, 8, 64, 65]              16
+            Conv2d-3           [-1, 16, 57, 65]             144
+       BatchNorm2d-4           [-1, 16, 57, 65]              32
+         AvgPool2d-5           [-1, 16, 15, 17]               0
+            Conv2d-6            [-1, 16, 15, 2]           4,112
+       BatchNorm2d-7            [-1, 16, 15, 2]              32
+         AvgPool2d-8             [-1, 16, 2, 1]               0
+================================================================
+Total params: 4,856
+Trainable params: 4,856
+Non-trainable params: 0
+----------------------------------------------------------------
+Input size (MB): 0.03
+Forward/backward pass size (MB): 1.45
+Params size (MB): 0.02
+Estimated Total Size (MB): 1.50
+----------------------------------------------------------------
+"""
