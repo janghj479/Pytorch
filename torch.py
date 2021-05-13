@@ -1,18 +1,18 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 
 class EEGNet(nn.Module):
     def __init__(self):
         super(EEGNet, self).__init__()
                 
         # Layer 1
-        self.conv2D = nn.Conv2d(in_channels=1, out_channels=8, kernel_size=(1, 64), padding_mode = "reflect")
+        self.conv2D = nn.Conv2d(in_channels=1, out_channels=8, kernel_size=(1, 64)) #padding 31.5
         self.batchnorm1 = nn.BatchNorm2d(8, False)
         
         # Layer 2
-        self.depthwise = nn.Conv2d(in_channels=8, out_channels=16, kernel_size=(8,1), 
-                                                                          padding_mode ="replicate", groups=8)
+        self.depthwise = nn.Conv2d(in_channels=8, out_channels=16, kernel_size=(8,1), groups=8)
         self.batchnorm2 = nn.BatchNorm2d(16, False)
         self.pooling1 = nn.AvgPool2d(1, 4)
         
@@ -31,11 +31,15 @@ class EEGNet(nn.Module):
         # Layer 1
         x = self.conv2D(x)
         print("conv2D",x.size( ))
+        x = F.pad(x, (31, 32, 0, 0)) # [left, right, top, bot]
+        print("paddng",x.size( ))
         x = self.batchnorm1(x)
         print("batchnorm",x.size( ))
         # Layer 2
         x = self.depthwise(x)
         print("depthwise",x.size( ))
+        x = F.pad(x, (0, 0, 3, 4)) # [left, right, top, bot]
+        print("paddng",x.size( ))
         x = F.elu(self.batchnorm2(x))
         print("batchnorm",x.size( ))
         x = self.pooling1(x)
@@ -51,7 +55,7 @@ class EEGNet(nn.Module):
         print("pooling2",x.size( ))
         x = F.dropout(x, 0.5)
         print("dropout",x.size( ))
-        return x
+        #return x
         
        #  FC Layer
         x = F.softmax(self.fc1(x))
@@ -59,7 +63,41 @@ class EEGNet(nn.Module):
     
 from torchsummary import summary
 model = EEGNet()
-summary(model, input_size=(None, 64, 128))
+summary(model, input_size=(1,64,128), batch_size = 1) #summary(your_model, input_size=(channels, H, W))
+
+#%% same padding
+""" 
+in_height, in_width = 64,128
+filter_height, filter_width = 8,1
+strides=(None,1,1)
+out_height = np.ceil(float(in_height) / float(strides[1]))
+out_width  = np.ceil(float(in_width) / float(strides[2]))
+
+print(out_height)
+print(out_width)
+
+#The total padding applied along the height and width is computed as:
+
+if (in_height % strides[1] == 0):
+  pad_along_height = max(filter_height - strides[1], 0)
+else:
+  pad_along_height = max(filter_height - (in_height % strides[1]), 0)
+if (in_width % strides[2] == 0):
+  pad_along_width = max(filter_width - strides[2], 0)
+else:
+  pad_along_width = max(filter_width - (in_width % strides[2]), 0)
+
+print(pad_along_height, pad_along_width)
+  
+#Finally, the padding on the top, bottom, left and right are:
+
+pad_top = pad_along_height // 2
+pad_bottom = pad_along_height - pad_top
+pad_left = pad_along_width // 2
+pad_right = pad_along_width - pad_left
+
+print(pad_left, pad_right, pad_top, pad_bottom)
+"""
 
 #%% Summary
 """
