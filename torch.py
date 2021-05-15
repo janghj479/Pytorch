@@ -1,69 +1,83 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
+import torchvision
 
 class EEGNet(nn.Module):
+    
     def __init__(self):
         super(EEGNet, self).__init__()
-                
-        # Layer 1
-        self.conv2D = nn.Conv2d(in_channels=1, out_channels=8, kernel_size=(1, 64)) #padding 31.5
+    
+        # Conv2D Layer
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=8, kernel_size=(1, 64))
         self.batchnorm1 = nn.BatchNorm2d(8, False)
         
-        # Layer 2
-        self.depthwise = nn.Conv2d(in_channels=8, out_channels=16, kernel_size=(8,1), groups=8)
+        # Depthwise Layer
+        self.depthwise = nn.Conv2d(in_channels=8, out_channels=16, kernel_size=(8, 1),
+                                   groups=8)
         self.batchnorm2 = nn.BatchNorm2d(16, False)
         self.pooling1 = nn.AvgPool2d(1, 4)
         
-        # Layer 3
-        self.pointwise = nn.Conv2d(in_channels=16, out_channels=16, kernel_size=(1, 16))
+        # Separable Layer
+        self.separable = nn.Conv2d(in_channels=16, out_channels=16, kernel_size=(1, 16))
         self.batchnorm3 = nn.BatchNorm2d(16, False)
         self.pooling2 = nn.AvgPool2d(1, 8)
+
+        #Flatten
+        self.flatten = nn.Flatten()
         
-        # FC Layer
-        self.fc1 = nn.Linear(1*4*16,1)
+        #linear
+        self.linear1 = nn.Linear(96,4)
         
 
     def forward(self, x):
-    
-        print("input",x.size( ))
-        # Layer 1
-        x = self.conv2D(x)
-        print("conv2D",x.size( ))
-        x = F.pad(x, (31, 32, 0, 0)) # [left, right, top, bot]
-        print("paddng",x.size( ))
-        x = self.batchnorm1(x)
-        print("batchnorm",x.size( ))
-        # Layer 2
+
+        print("연산 전", x.size())
+        # Conv2D
+        x = F.pad(x,(31,32,0,0))
+        x = self.conv1(x)
+        print("conv1", x.size())
+        x = self.batchnorm1(x)    
+        print("batchnorm", x.size())
+
+        # Depthwise conv2D
         x = self.depthwise(x)
-        print("depthwise",x.size( ))
-        x = F.pad(x, (0, 0, 3, 4)) # [left, right, top, bot]
-        print("paddng",x.size( ))
+        print("depthwise", x.size())
         x = F.elu(self.batchnorm2(x))
-        print("batchnorm",x.size( ))
+        print("batchnorm & elu", x.size())
         x = self.pooling1(x)
-        print("pooling1",x.size( ))
+        print("pooling", x.size())
         x = F.dropout(x, 0.5)
-        print("dropout",x.size( ))
-        # Layer 3
-        x = self.pointwise(x)
-        print("pointwise",x.size( ))
-        x = F.elu(self.batchnorm3(x))
-        print("batchnorm",x.size( ))
-        x = self.pooling2(x)
-        print("pooling2",x.size( ))
-        x = F.dropout(x, 0.5)
-        print("dropout",x.size( ))
-        #return x
+        print("dropout", x.size())
         
-       #  FC Layer
-        x = F.softmax(self.fc1(x))
+        # Separable conv2D
+        x = self.separable(x)
+        print("separable", x.size())
+        x = F.elu(self.batchnorm3(x))
+        print("batchnorm & elu", x.size())
+        x = self.pooling2(x)
+        print("pooling", x.size())
+        x = F.dropout(x, 0.5)
+        print("dropout", x.size())
+        
+        #Flatten
+        x = self.flatten(x)
+        print("flatten", x.size())
+        
+        # FC Layer
+        x = F.softmax(self.linear1(x))
+        print("linear", x.size())
+        
         return x
     
+model = EEGNet()
+myModel = model(torch.randn(10,1,64,128))
+
+"""    
 from torchsummary import summary
 model = EEGNet()
 summary(model, input_size=(1,64,128), batch_size = 1) #summary(your_model, input_size=(channels, H, W))
+"""
 
 #%% same padding
 """ 
