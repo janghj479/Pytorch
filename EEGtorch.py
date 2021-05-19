@@ -13,26 +13,25 @@ class EEGNet(nn.Module):
         self.batchnorm1 = nn.BatchNorm2d(8, False)
         
         # Depthwise Layer
-        self.depthwise = nn.Conv2d(in_channels=8, out_channels=16, kernel_size=(8, 1),
+        self.depthwise = nn.Conv2d(in_channels=8, out_channels=16, kernel_size=(64, 1),
                                    groups=8)
         self.batchnorm2 = nn.BatchNorm2d(16, False)
         self.pooling1 = nn.AvgPool2d(1, 4)
         
         # Separable Layer
-        self.separable = nn.Conv2d(in_channels=16, out_channels=16, kernel_size=(1, 16))
+        self.separable1 = nn.Conv2d(in_channels=16, out_channels=16, kernel_size=(1,16),
+                                    groups=16)
+        self.separable2 = nn.Conv2d(in_channels=16, out_channels=16, kernel_size=(1,1))
         self.batchnorm3 = nn.BatchNorm2d(16, False)
         self.pooling2 = nn.AvgPool2d(1, 8)
 
         #Flatten
         self.flatten = nn.Flatten()
-        
-        #linear
-        self.linear1 = nn.Linear(96,4)
-        
+    
 
     def forward(self, x):
 
-        print("연산 전", x.size())
+        print("input data", x.size())
         # Conv2D
         x = F.pad(x,(31,32,0,0))
         x = self.conv1(x)
@@ -51,7 +50,9 @@ class EEGNet(nn.Module):
         print("dropout", x.size())
         
         # Separable conv2D
-        x = self.separable(x)
+        x = F.pad(x,(7,8,0,0))
+        x = self.separable1(x)
+        x = self.separable2(x)
         print("separable", x.size())
         x = F.elu(self.batchnorm3(x))
         print("batchnorm & elu", x.size())
@@ -65,8 +66,8 @@ class EEGNet(nn.Module):
         print("flatten", x.size())
         
         # FC Layer
-        x = F.softmax(self.linear1(x))
-        print("linear", x.size())
+        x = F.softmax(x, dim=0)
+        print("softmax", x.size())
         
         return x
     
