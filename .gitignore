@@ -1,6 +1,13 @@
 EEGNet-archi.png
 
 *.png
+/TSA
+
+#____________________________________________________________________
+# git rm -r --cached .
+# git add .
+# git commit -m "ignore add"
+# git push
 
 # # 은 주석의 역할
 
@@ -11,4 +18,3 @@ EEGNet-archi.png
 # / 로 끝나는 것은 폴더로 인식
 
 # ! 를 사용하면 무시가 되지 않음
-/TSA
