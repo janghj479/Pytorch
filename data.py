@@ -1,31 +1,13 @@
-import numpy as np
-
 # mne imports
 import mne
 from mne import io
 from mne.datasets import sample
 
-# EEGNet-specific imports
-from EEGNet import EEGNet
+
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torchvision
-"""
-from tensorflow.keras import utils as np_utils
-from tensorflow.keras.callbacks import ModelCheckpoint
-from tensorflow.keras import backend as K
-"""
+import torch.utils.data as data_utils 
 
-# PyRiemann imports
-from pyriemann.estimation import XdawnCovariances
-from pyriemann.tangentspace import TangentSpace
-from pyriemann.utils.viz import plot_confusion_matrix
-from sklearn.pipeline import make_pipeline
-from sklearn.linear_model import LogisticRegression
 
-# tools for plotting confusion matrices
-from matplotlib import pyplot as plt
 """
 def to_one_hot(y, n_dims=None):
     
@@ -41,7 +23,7 @@ def to_one_hot(y, n_dims=None):
 
 # while the default tensorflow ordering is 'channels_last' we set it here
 # to be explicit in case if the user has changed the default ordering
-K.set_image_data_format('channels_last')
+#K.set_image_data_format('channels_last')
 
 ##################### Process, filter and epoch the data ######################
 data_path = sample.data_path()
@@ -96,122 +78,19 @@ Y_test = torch.nn.functional.one_hot(Y_test.to(torch.int64), 4)
 
 # convert data to NHWC (trials, channels, samples, kernels) format. Data 
 # contains 60 channels and 151 time-points. Set the number of kernels to 1.
-X_train      = X_train.reshape(X_train.shape[0], chans, samples, kernels)
-X_validate   = X_validate.reshape(X_validate.shape[0], chans, samples, kernels)
-X_test       = X_test.reshape(X_test.shape[0], chans, samples, kernels)
+# torch.Tensor() / tensor로 변환할 때 새 메모리를 할당한다.
+# torch.from_numpy() / tensor로 변환할 때, 원래 메모리를 상속받는다. (=as_tensor())
+
+X_train      = torch.from_numpy(X_train.reshape(X_train.shape[0], chans, samples, kernels))
+X_validate   = torch.from_numpy(X_validate.reshape(X_validate.shape[0], chans, samples, kernels))
+X_test       = torch.from_numpy(X_test.reshape(X_test.shape[0], chans, samples, kernels))
    
-print('X_train shape:', X_train.shape)
-print(X_train.shape[0], 'train samples')
-print(X_test.shape[0], 'test samples')
 
-# configure the EEGNet-8,2,16 model with kernel length of 32 samples (other 
-# model configurations may do better, but this is a good starting point)
-model = EEGNet(nb_classes = 4, Chans = chans, Samples = samples, 
-               dropoutRate = 0.5, kernLength = 32, F1 = 8, D = 2, F2 = 16, 
-               dropoutType = 'Dropout')
+trn = data_utils.TensorDataset(X_train, Y_train)
+trn_loader = data_utils.DataLoader(trn, batch_size = 16, shuffle=True)
 
-# compile the model and set the optimizers
-model.compile(loss='categorical_crossentropy', optimizer='adam', 
-              metrics = ['accuracy'])
+val = data_utils.TensorDataset(X_validate, Y_validate)
+val_loader = data_utils.DataLoader(val, batch_size = 16, shuffle=False)
 
-# count number of parameters in the model
-numParams    = model.count_params()    
-
-# set a valid path for your system to record model checkpoints
-checkpointer = ModelCheckpoint(filepath='C:/Users/oo/Desktop/SSSEP/tmp/checkpoint.h5', verbose=1,
-                               save_best_only=True)
-
-###############################################################################
-# if the classification task was imbalanced (significantly more trials in one
-# class versus the others) you can assign a weight to each class during 
-# optimization to balance it out. This data is approximately balanced so we 
-# don't need to do this, but is shown here for illustration/completeness. 
-###############################################################################
-
-# the syntax is {class_1:weight_1, class_2:weight_2,...}. Here just setting
-# the weights all to be 1
-class_weights = {0:1, 1:1, 2:1, 3:1}
-
-################################################################################
-# fit the model. Due to very small sample sizes this can get
-# pretty noisy run-to-run, but most runs should be comparable to xDAWN + 
-# Riemannian geometry classification (below)
-################################################################################
-fittedModel = model.fit(X_train, Y_train, batch_size = 16, epochs = 5, 
-                        verbose = 2, validation_data=(X_validate, Y_validate),
-                        callbacks=[checkpointer], class_weight = class_weights)
-
-# load optimal weights
-model.load_weights('C:/Users/oo/Desktop/SSSEP/tmp/checkpoint.h5')
-
-###############################################################################
-# can alternatively used the weights provided in the repo. If so it should get
-# you 93% accuracy. Change the WEIGHTS_PATH variable to wherever it is on your
-# system.
-###############################################################################
-
-# WEIGHTS_PATH = /path/to/EEGNet-8-2-weights.h5 
-# model.load_weights(WEIGHTS_PATH)
-
-###############################################################################
-# make prediction on test set.
-###############################################################################
-
-probs       = model.predict(X_test)
-preds       = probs.argmax(axis = -1)  
-acc         = np.mean(preds == Y_test.argmax(axis=-1))
-print("Classification accuracy: %f " % (acc))
-
-############################# Model summary ##############################
-model.summary()
-
-############################# PyRiemann Portion ##############################
-
-# code is taken from PyRiemann's ERP sample script, which is decoding in 
-# the tangent space with a logistic regression
-
-n_components = 2  # pick some components
-
-# set up sklearn pipeline
-clf = make_pipeline(XdawnCovariances(n_components),
-                    TangentSpace(metric='riemann'),
-                    LogisticRegression())
-
-preds_rg     = np.zeros(len(Y_test))
-
-# reshape back to (trials, channels, samples)
-X_train      = X_train.reshape(X_train.shape[0], chans, samples)
-X_test       = X_test.reshape(X_test.shape[0], chans, samples)
-
-# train a classifier with xDAWN spatial filtering + Riemannian Geometry (RG)
-# labels need to be back in single-column format
-clf.fit(X_train, Y_train.argmax(axis = -1))
-preds_rg     = clf.predict(X_test)
-
-# Printing the results
-acc2         = np.mean(preds_rg == Y_test.argmax(axis = -1))
-print("Classification accuracy: %f " % (acc2))
-
-# plot the confusion matrices for both classifiers
-names        = ['audio left', 'audio right', 'vis left', 'vis right']
-plt.figure(0)
-plot_confusion_matrix(preds, Y_test.argmax(axis = -1), names, title = 'EEGNet-8,2')
-
-plt.figure(1)
-plot_confusion_matrix(preds_rg, Y_test.argmax(axis = -1), names, title = 'xDAWN + RG')
-
-plt.figure(2)
-plt.plot(fittedModel.history['accuracy'])
-plt.plot(fittedModel.history['val_accuracy'])
-plt.title('Accuracy')
-plt.xlabel('epoch')
-plt.legend(['acc', 'val_acc'], loc='upper left')
-plt.show()
-
-plt.figure(3)
-plt.plot(fittedModel.history['loss'])
-plt.plot(fittedModel.history['val_loss'])
-plt.title('Loss')
-plt.xlabel('epoch')
-plt.legend(['loss','val_loss'], loc='upper left')
-plt.show()
+test = data_utils.TensorDataset(X_test, Y_test)
+test_loader = data_utils.DataLoader(test, batch_size = 16, shuffle=True)
